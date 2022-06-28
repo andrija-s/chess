@@ -155,16 +155,20 @@ impl Board {
     /// ```
     #[inline]
     pub fn status(&self) -> BoardStatus {
-        let moves = MoveGen::new_legal(&self).len();
-        match moves {
-            0 => {
-                if self.checkers == EMPTY {
-                    BoardStatus::Stalemate
-                } else {
-                    BoardStatus::Checkmate
-                }
+        if MoveGen::has_legal_moves(&self) {
+            if *(self.pieces(Piece::Pawn)) == EMPTY 
+            && *(self.pieces(Piece::Rook)) == EMPTY
+            && *(self.pieces(Piece::Queen)) == EMPTY 
+            && self.combined().popcnt() < 4 {
+                return BoardStatus::Stalemate
             }
-            _ => BoardStatus::Ongoing,
+            return BoardStatus::Ongoing
+        } else {
+            if self.checkers == EMPTY {
+                return BoardStatus::Stalemate
+            } else {
+                return BoardStatus::Checkmate
+            }
         }
     }
 
@@ -998,6 +1002,24 @@ impl Board {
 
         result.side_to_move = !result.side_to_move;
     }
+    /// is queen under attack?
+    pub fn check_ohno(&self) -> bool {
+        let qsq = (self.color_combined(self.side_to_move()) & self.pieces(Piece::Queen)).to_square();
+        if get_knight_moves(qsq) & self.color_combined(!self.side_to_move()) & self.pieces(Piece::Knight) != EMPTY {
+            return true;
+        }
+        let attackers = self.color_combined(!self.side_to_move)
+            & ((get_bishop_rays(qsq)
+                & (self.pieces(Piece::Bishop) | self.pieces(Piece::Queen)))
+                | (get_rook_rays(qsq)
+                    & (self.pieces(Piece::Rook) | self.pieces(Piece::Queen))));
+        for sq in attackers {
+            if between(sq, qsq) & self.combined() == EMPTY {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// Update the pin information.
     fn update_pin_info(&mut self) {
@@ -1040,6 +1062,45 @@ impl Board {
     #[inline]
     pub fn checkers(&self) -> &BitBoard {
         &self.checkers
+    }
+    // Uh oh, Andy's blunders
+    /// Count pieces on board of particular color.
+    ///
+    /// ```
+    /// use chess::{Board, Color, Piece};
+    /// use std::str::FromStr;
+    ///
+    /// let board = Board::from_str("r2qk1nr/p1p2ppp/2p1b3/2b5/3P4/5N2/PPP2PPP/RNBQK2R b KQkq d3 0 7").unwrap();
+    /// 
+    /// let white_king = board.count_piece(Piece::King, Color::White);
+    /// let black_king = board.count_piece(Piece::King, Color::Black);
+    /// let white_pawns = board.count_piece(Piece::Pawn, Color::White);
+    /// let black_pawns = board.count_piece(Piece::Pawn, Color::Black);
+    /// let white_rooks = board.count_piece(Piece::Rook, Color::White);
+    /// let black_rooks = board.count_piece(Piece::Rook, Color::Black);
+    /// let white_queen = board.count_piece(Piece::Queen, Color::White);
+    /// let black_queen = board.count_piece(Piece::Queen, Color::Black);
+    /// let white_bishops = board.count_piece(Piece::Bishop, Color::White);
+    /// let black_bishops = board.count_piece(Piece::Bishop, Color::Black);
+    /// let white_knights = board.count_piece(Piece::Knight, Color::White);
+    /// let black_knights = board.count_piece(Piece::Knight, Color::Black);
+    /// 
+    /// assert_eq!(white_king, 1);
+    /// assert_eq!(black_king, 1);
+    /// assert_eq!(white_pawns, 7);
+    /// assert_eq!(black_pawns, 6);
+    /// assert_eq!(white_rooks, 2);
+    /// assert_eq!(black_rooks, 2);
+    /// assert_eq!(white_queen, 1);
+    /// assert_eq!(black_queen, 1);
+    /// assert_eq!(white_bishops, 1);
+    /// assert_eq!(black_bishops, 2);
+    /// assert_eq!(white_knights, 2);
+    /// assert_eq!(black_knights, 1);
+    /// ```
+    #[inline]
+    pub fn count_piece(&self, piece: Piece, color: Color) -> u32 {
+        return (self.color_combined(color) & self.pieces(piece)).popcnt()
     }
 }
 
